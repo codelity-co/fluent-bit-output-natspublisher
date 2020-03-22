@@ -1,0 +1,48 @@
+version: '3.7'
+volumes:
+  test-data-volume:
+services:
+  nats:
+    image: nats:latest
+    volumes:
+      - ./nats/config:/nats/config
+    ports:
+      - 4222:4222
+      - 6222:6222
+      - 8222:8222
+    command:
+      - -c 
+      - /nats/config/nats.conf
+  fluent-bit:
+    image: fluent/fluent-bit:latest
+    command:
+      - /fluent-bit/bin/fluent-bit
+      - --config=/fluent-bit/etc/fluent-bit.conf
+      - --plugin=/fluent-bit/plugins/fluentbit-plugin-natspublisher.so
+    volumes:
+      - ./fluent-bit/config/fluent-bit-input.conf:/fluent-bit/etc/fluent-bit-input.conf
+      - ./fluent-bit/config/fluent-bit-output.conf:/fluent-bit/etc/fluent-bit-output.conf
+      - ./fluent-bit/config/fluent-bit-service.conf:/fluent-bit/etc/fluent-bit-service.conf
+      - ./fluent-bit/config/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf
+      # - ./fluent-bit/config/plugins.conf:/fluent-bit/etc/plugins.conf
+      - ./fluent-bit/plugins:/fluent-bit/plugins
+
+  codelity-iot-loader:
+    image: gcr.io/codelity-co/codelity-iot-loader:0.2.0
+    links:
+      - fluent-bit
+    depends_on: 
+      - fluent-bit
+    command: 
+      - load
+      - --input-file-path=/data/delivery-model.json 
+      - --input-format=json 
+      - --connection-type=mqtt 
+      - --mqtt-qos=0 
+      - --mqtt-topic=hk.codelity.simulation.payloads 
+      - --server-url=tcp://fluent-bit:1883
+    volumes:
+      - type: bind
+        source: /Users/reidlai/Desktop/simulation-data
+        target: /data    
+
