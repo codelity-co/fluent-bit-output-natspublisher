@@ -17,14 +17,11 @@ DOCKERCMD=docker
 
 ROOT := $$(git rev-parse --show-toplevel)
 
-all: lint build
-.PHONY: all
-
-.PHONY: lint
 lint: 
 		$(GOLINT)
 
-.PHONY: build
-build: 
-		GO111MODULE=$(GO111MODULE) CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) $(GOBUILD) -buildmode=c-shared -o $(ROOT)/docker-compose/fluent-bit/plugins/$(BINARY_NAME) -v
+linux: 
+		GO111MODULE=$(GO111MODULE) CGO_ENABLED=$(CGO_ENABLED) GOOS=linux GOARCH=amd64 $(GOBUILD) -buildmode=c-shared -o $(ROOT)/dist/linux/$(BINARY_NAME) -v
 
+darwin:
+		GO111MODULE=$(GO111MODULE) CGO_ENABLED=$(CGO_ENABLED) GOOS=darwin GOARCH=amd64 $(GOBUILD) -buildmode=c-shared -o $(ROOT)/dist/darwin/$(BINARY_NAME) -v
