@@ -8,7 +8,7 @@ import (
 
 type PluginConfig struct {
 	ServerUrls string
-	Topic string
+	// Topic string
 }
 
 type NatsPublisher struct {

@@ -6,6 +6,7 @@ import (
 	"C"
 	"encoding/json"
 	"os"
+	"strings"
 	"unsafe"
 
 	"github.com/fluent/fluent-bit-go/output"
@@ -29,7 +30,6 @@ func FLBPluginRegister(ctx unsafe.Pointer) int {
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	pluginConfig := &natspublisher.PluginConfig{
 		ServerUrls: output.FLBPluginConfigKey(ctx, "ServerUrls"),
-		Topic:      output.FLBPluginConfigKey(ctx, "Topic"),
 	}
 	logger = logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
@@ -60,30 +60,25 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 		if ret != 0 {
 			break
 		}
-		payload := map[string]interface{}{}
-		for k, v := range record {
-			switch v.(type) {
-				case []uint8:
-					payload[k.(string)] = string(v.([]uint8))
-				default:
-					payload[k.(string)] = v
-			}
-		}
 
-		jsonString, err := json.Marshal(payload)
+		var subject string = string(record["topic"].([]uint8))
+		subject = strings.ReplaceAll(subject, "/", ".")
+
+		jsonPayload, err := json.Marshal(record["payload"])
 		if err != nil {
 			logger.Error(err)
-		}
-
-		if len(plugin.Config.Topic) > 0 {
+		} else {
 			msg := &nats.Msg{
-				Subject: plugin.Config.Topic,
-				Data:    jsonString,
+				Subject: subject,
+				Data:    jsonPayload,
 			}
-			if err := plugin.Conn.PublishMsg(msg); err != nil {
+			if err = plugin.Conn.PublishMsg(msg); err != nil {
 				logger.Error(err)
 			}
-		} 
+		}
+
+
+
 	}
 
 	return output.FLB_OK
