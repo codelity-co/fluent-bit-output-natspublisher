@@ -87,6 +87,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 			plugin.Logger.Debug(fmt.Sprintf("msg = %v", msg))
 			if err = plugin.Conn.PublishMsg(msg); err != nil {
 				plugin.Logger.Error(err)
+				return output.FLB_ERROR
 			}
 		}
 
