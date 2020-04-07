@@ -5,20 +5,18 @@ package main
 import (
 	"C"
 	"encoding/json"
-	"os"
+	"fmt"
 	"strings"
 	"unsafe"
 
 	"github.com/fluent/fluent-bit-go/output"
 	nats "github.com/nats-io/nats.go"
-	"github.com/sirupsen/logrus"
 
 	"github.com/codelity-co/fluentbit-plugin-natspublisher/pkg/natspublisher"
 )
 
 var (
 	plugins []*natspublisher.NatsPublisher
-	logger  *logrus.Logger
 )
 
 //export FLBPluginRegister
@@ -30,15 +28,22 @@ func FLBPluginRegister(ctx unsafe.Pointer) int {
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	pluginConfig := &natspublisher.PluginConfig{
 		ServerUrls: output.FLBPluginConfigKey(ctx, "ServerUrls"),
+		Debug: output.FLBPluginConfigKey(ctx, "Debug"),
 	}
-	logger = logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
-	logger.SetOutput(os.Stdout)
-	plugin, err := natspublisher.NewPlugin(pluginConfig, logger)
+
+	if pluginConfig.ServerUrls == "" {
+		pluginConfig.ServerUrls = "nats://localhost:4222"
+	}
+
+	if pluginConfig.Debug == "" {
+		pluginConfig.Debug = "off"
+	}
+
+	plugin, err := natspublisher.NewPlugin(pluginConfig)
 	if err != nil {
-		logger.Error(err)
 		return output.FLB_ERROR
 	}
+
 	output.FLBPluginSetContext(ctx, plugin)
 	plugins = append(plugins, plugin)
 	return output.FLB_OK
@@ -48,7 +53,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 	plugin := output.FLBPluginGetContext(ctx).(*natspublisher.NatsPublisher)
 	if plugin == nil {
-		logger.Error("plugin not initialized")
+		plugin.Logger.Error("plugin not initialized")
 		return output.FLB_ERROR
 	}
 
@@ -60,24 +65,30 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 		if ret != 0 {
 			break
 		}
+		plugin.Logger.Debug(fmt.Sprintf("record = %v", record))
 
 		var subject string = string(record["topic"].([]uint8))
 		subject = strings.ReplaceAll(subject, "/", ".")
+		delete(record, "topic")
 
-		jsonPayload, err := json.Marshal(record["payload"])
+		payload := make(map[string]interface{})
+		for k, v := range record {
+			payload[k.(string)] = v
+		}
+		payload["subject"] = subject
+		jsonPayload, err := json.Marshal(payload)
 		if err != nil {
-			logger.Error(err)
+			plugin.Logger.Error(err)
 		} else {
 			msg := &nats.Msg{
 				Subject: subject,
 				Data:    jsonPayload,
 			}
+			plugin.Logger.Debug(fmt.Sprintf("msg = %v", msg))
 			if err = plugin.Conn.PublishMsg(msg); err != nil {
-				logger.Error(err)
+				plugin.Logger.Error(err)
 			}
 		}
-
-
 
 	}
 
@@ -89,7 +100,7 @@ func FLBPluginExit() int {
 	for _, plugin := range plugins {
 		if plugin.Conn != nil {
 			if err := plugin.Conn.Drain(); err != nil {
-				logger.Error(err)
+				plugin.Logger.Error(err)
 			}
 			plugin.Conn.Close()
 		}
