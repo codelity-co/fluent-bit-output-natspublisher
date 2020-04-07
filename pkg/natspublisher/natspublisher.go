@@ -4,9 +4,10 @@ package natspublisher
 import (
 	"os"
 	"strings"
-	
-	"github.com/sirupsen/logrus"
+	"time"
+
 	nats "github.com/nats-io/nats.go"
+	"github.com/sirupsen/logrus"
 )
 
 type PluginConfig struct {
@@ -22,7 +23,12 @@ type NatsPublisher struct {
 
 func NewPlugin(config *PluginConfig) (*NatsPublisher, error) {
 
-	conn, err := nats.Connect(config.ServerUrls)
+	opts := nats.GetDefaultOptions()
+	opts.Url = config.ServerUrls
+	opts.AllowReconnect = true
+	opts.ReconnectWait = time.Duration(1*time.Second)
+	opts.MaxReconnect=-1
+	conn, err := opts.Connect()
 	if(err != nil) {
 		return nil, err
 	}
