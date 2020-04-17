@@ -9,8 +9,6 @@ import (
 	"strings"
 	"unsafe"
 
-	nats "github.com/nats-io/nats.go"
-	stan "github.com/nats-io/stan.go"
 	"github.com/fluent/fluent-bit-go/output"
 
 	"github.com/codelity-co/fluentbit-plugin-natspublisher/pkg/natspublisher"
@@ -49,6 +47,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 
 	plugin, err := natspublisher.NewPlugin(pluginConfig)
 	if err != nil {
+		fmt.Println(err)
 		return output.FLB_ERROR
 	}
 
@@ -66,6 +65,9 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 	}
 
 	decoder := output.NewDecoder(data, int(length))
+
+	nc := plugin.Conn
+	sc := plugin.StanConn
 
 	for {
 
@@ -91,14 +93,15 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 		jsonPayload, err := json.Marshal(payload)
 		if err != nil {
 			plugin.Logger.Error(err)
-			continue
+			return output.FLB_ERROR
 		}
 		plugin.Logger.Debug(fmt.Sprintf("jsonPayload = %v", string(jsonPayload)))
 
 		// Publish NATS message
-		if plugin.StanConn != nil {
-			var sc stan.Conn = *plugin.StanConn
-			_, err = sc.PublishAsync(subject, jsonPayload, func(ackedNuid string, err error) {
+		if plugin.Config.EnableStreaming == "on" {
+			plugin.Logger.Debug(fmt.Sprintf("channelId = %v", plugin.Config.ChannelId))
+			plugin.Logger.Debug(fmt.Sprintf("jsonPayload = %v", string(jsonPayload)))
+			_, err = sc.PublishAsync(plugin.Config.ChannelId, jsonPayload, func(ackedNuid string, err error) {
 				if err != nil {
 					plugin.Logger.Error(err)
 				}
@@ -109,7 +112,6 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, _ *C.char) int {
 				return output.FLB_ERROR
 			}
 		} else {
-			var nc *nats.Conn = plugin.Conn
 			if err = nc.Publish(subject, jsonPayload); err != nil {
 				plugin.Logger.Error(err)
 				return output.FLB_ERROR
